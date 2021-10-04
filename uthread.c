@@ -72,7 +72,7 @@ node *ll_get_by_tid(unsigned int tid){
 
 /** These are the methods you need to implement! **/
 void uthread_init(void){
-	printf("init called\n");
+	//printf("init called\n");
 
 	// Implement the necessary structs and state so that the first call to uthread_create is successful
 	// You should assume that this method is called by the program's main / original thread.
@@ -81,11 +81,11 @@ void uthread_init(void){
 	// 1) Make main context  (and place into main_ctx)
 	main_ctx = malloc(sizeof(ucontext_t));
 	getcontext(main_ctx);
-	//makecontext(main_ctx, void*, 0);
 	// 2) Make uthread_t
 	uthread_t *main_thread = malloc(sizeof(uthread_t)); 
 	main_thread->state = T_ACTIVE; 
 	main_thread->ctx = main_ctx;
+	main_thread->tid = num_threads;
 	// 3) Make node
 	node *main_node = malloc(sizeof(node));
 	main_node->t = main_thread;
@@ -95,11 +95,11 @@ void uthread_init(void){
 }
 
 uthread_t *uthread_create(void *(*func)(void *), void *argp){
-	printf("create called\n");
+	//printf("create called\n");
 	// Create a new thread which will call func
 	// 1) Make new ucontext_t
-	ucontext_t *new_ctx = malloc(sizeof(ucontext_t));
 	node *active_node = ll_get_by_state(T_ACTIVE);
+	ucontext_t *new_ctx = malloc(sizeof(ucontext_t));
 	getcontext(new_ctx);
 	new_ctx->uc_link=active_node->t->ctx;
  	new_ctx->uc_stack.ss_sp=malloc(MEM);
@@ -120,7 +120,7 @@ uthread_t *uthread_create(void *(*func)(void *), void *argp){
 	active_node->t->state = T_READY;
 	new_thread->state = T_ACTIVE;
 	makecontext(new_ctx, (void*) func, 1, argp);
-	swapcontext(main_ctx, new_ctx);
+	swapcontext(active_node->t->ctx, new_ctx);
 	// 6) Return the new uthread_t that was created
 	//ll_print();
 	return new_thread;
@@ -136,39 +136,35 @@ int uthread_get_id(void){
 }
 
 int uthread_yield(void){
-	printf("yield called\n");
+	//printf("yield called\n");
 	// Just schedule some other thread!
 	node *active_node = ll_get_by_state(T_ACTIVE);
+	node *new_node = ll_get_by_state(T_READY);
 	active_node->t->state = T_READY;
-	if (active_node->next != NULL)
-	{
-		active_node->t->state = T_ACTIVE;
-	}
-	else
-	{
-		head->t->state = T_ACTIVE;
-	}
+	new_node->t->state = T_ACTIVE;
+	swapcontext(active_node->t->ctx, new_node->t->ctx);
 	// return 0 if there are no errors
 	return 0;
 }
 
 int uthread_join (uthread_t thread){
-	printf("join called\n");
+	//printf("join called\n");
 	// Example, main thread calls uthread_join(child_thread_1) 
 	//
 	// 1) Find the given thread in the queue (linked list) by it's TID
-	uthread_t *new_thread = ll_get_by_tid(thread.tid)->t ;
+	node *new_node = ll_get_by_tid(thread.tid);
+	uthread_t *new_thread = new_node->t;
 	// 2) Tell the given thread that it is blocking the calling
 	//    thread (i.e. the currently active thread), by setting 
 	//    the joining_tid
 	uthread_t *active_thread = ll_get_by_state(T_ACTIVE)->t;
-	active_thread->joining_tid = new_thread->tid;
+	new_thread->joining_tid = active_thread->tid;
 	// 3) Mark the calling (currently active) thread as blocked
 	active_thread->state = T_BLOCKED;
 	// 4) Mark the given thread (from the queue) as active
 	new_thread->state = T_ACTIVE;
 	// 5) swap the context to start the given thread (from the queue)
-	swapcontext(active_thread, new_thread);
+	swapcontext(active_thread->ctx, new_thread->ctx);
 	// return 0 if there are no errors
 	return 0;
 }
